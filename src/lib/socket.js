@@ -14,6 +14,11 @@ const io = new Server(server,{
 export function getReceiverSocketId(userId){
    return userSocketMap[userId];
 }
+
+export function getIO() {
+  return io;
+}
+
 //used to store online users
 const userSocketMap = {}
 
@@ -22,6 +27,19 @@ io.on("connection",(socket)=>{
 
     const userId = socket.handshake.query.userId;
     if(userId) userSocketMap[userId] = socket.id;
+
+    if (socket.handshake.query.groups) {
+      const userGroups = socket.handshake.query.groups.split(',').filter(Boolean);
+      console.log(`User ${userId} joining groups:`, userGroups);
+      userGroups.forEach(groupId => {
+          socket.join(groupId);
+      });
+  }
+
+  socket.on("joinGroup", (groupId) => {
+    console.log(`User ${userId} joining group ${groupId}`);
+    socket.join(groupId);
+});
 
 
     io.emit('getOnlineUsers',Object.keys(userSocketMap))
@@ -85,6 +103,35 @@ io.on("connection",(socket)=>{
       socket.on("endCall", ({ to }) => {
         io.to(to).emit("callEnded");
       });
+
+      //group chat
+      socket.on("groupTyping", ({ groupId }) => {
+        socket.to(groupId).emit("userGroupTyping", { 
+            groupId,
+            senderId: userId 
+        });
+    });
+
+    socket.on("groupStopTyping", ({ groupId }) => {
+      socket.to(groupId).emit("userGroupStopTyping", { 
+          groupId,
+          senderId: userId 
+      });
+  });
+
+  socket.on("groupChatCleared", ({ groupId, senderId }) => {
+    socket.to(groupId).emit("groupChatCleared", { 
+        groupId,
+        senderId 
+    });
+});
+
+if (userId) {
+  const userGroups = socket.handshake.query.groups?.split(',') || [];
+  userGroups.forEach(groupId => {
+      socket.join(groupId);
+  });
+}
 })
 
 export {io,app,server}
